@@ -33,7 +33,10 @@ class TavoWeb_Analytics_Plugin {
      * Įterpia analizės skriptą į <head>
      */
     public function add_analytics_script() {
-        echo '<script data-host="https://analytics.tavoweb.eu" data-dnt="false" src="https://analytics.tavoweb.eu/js/script.js" id="ZwSg9rf6GA" async defer></script>';
+        $site_id = get_option('tavoweb_analytics_site_id');
+        if (!empty($site_id)) {
+            echo '<script data-host="https://analytics.tavoweb.eu" data-dnt="false" src="https://analytics.tavoweb.eu/js/script.js" id="' . esc_attr($site_id) . '" async defer></script>';
+        }
     }
 
     /**
@@ -72,6 +75,7 @@ class TavoWeb_Analytics_Plugin {
      */
     public function register_settings() {
         register_setting('tavoweb_analytics_options', 'tavoweb_analytics_api_key');
+        register_setting('tavoweb_analytics_options', 'tavoweb_analytics_site_id');
 
         add_settings_section(
             'tavoweb_analytics_main_section',
@@ -87,6 +91,14 @@ class TavoWeb_Analytics_Plugin {
             'tavoweb-analytics',
             'tavoweb_analytics_main_section'
         );
+
+        add_settings_field(
+            'tavoweb_analytics_site_id',
+            'Svetainės ID',
+            array($this, 'render_site_id_field'),
+            'tavoweb-analytics',
+            'tavoweb_analytics_main_section'
+        );
     }
 
     /**
@@ -95,6 +107,14 @@ class TavoWeb_Analytics_Plugin {
     public function render_api_key_field() {
         $api_key = get_option('tavoweb_analytics_api_key');
         echo '<input type="text" name="tavoweb_analytics_api_key" value="' . esc_attr($api_key) . '" class="regular-text">';
+    }
+
+    /**
+     * Atvaizduoja Svetainės ID įvesties lauką
+     */
+    public function render_site_id_field() {
+        $site_id = get_option('tavoweb_analytics_site_id');
+        echo '<input type="text" name="tavoweb_analytics_site_id" value="' . esc_attr($site_id) . '" class="regular-text">';
     }
 
     /**
@@ -113,45 +133,66 @@ class TavoWeb_Analytics_Plugin {
      */
     public function render_dashboard_widget() {
         $api_key = get_option('tavoweb_analytics_api_key');
+        $site_id = get_option('tavoweb_analytics_site_id');
 
-        if (empty($api_key)) {
-            echo '<p>Prašome įvesti savo TavoWeb Analytics API raktą <a href="' . admin_url('options-general.php?page=tavoweb-analytics') . '">nustatymų puslapyje</a>.</p>';
+        if (empty($api_key) || empty($site_id)) {
+            echo '<p>Prašome įvesti savo TavoWeb Analytics API raktą ir Svetainės ID <a href="' . admin_url('options-general.php?page=tavoweb-analytics') . '">nustatymų puslapyje</a>.</p>';
             return;
         }
 
-        $api_url = 'https://analytics.tavoweb.eu/api/v1/stats';
+        $stats_to_fetch = [
+            'visitors' => 'Lankytojai (Visitors)',
+            'pageviews' => 'Puslapių peržiūros (Pageviews)',
+            'bounce_rate' => 'Grįžimo rodiklis (Bounce Rate)',
+            'visit_duration' => 'Apsilankymo trukmė (Visit Duration)',
+        ];
+
+        $results = [];
+        $base_url = 'https://analytics.tavoweb.eu/api/v1/stats/' . $site_id;
+        $to_date = date('Y-m-d');
+        $from_date = date('Y-m-d', strtotime('-30 days'));
+
         $args = array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
+                'Accept' => 'application/json',
             ),
         );
 
-        $response = wp_remote_get($api_url, $args);
+        foreach ($stats_to_fetch as $stat_name => $label) {
+            $query_params = [
+                'name' => $stat_name,
+                'from' => $from_date,
+                'to' => $to_date,
+            ];
+            $api_url = add_query_arg($query_params, $base_url);
 
-        if (is_wp_error($response)) {
-            echo '<p>Klaida gaunant duomenis: ' . $response->get_error_message() . '</p>';
-            return;
+            $response = wp_remote_get($api_url, $args);
+            $value = 'N/A';
+
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                $body = wp_remote_retrieve_body($response);
+                $data = json_decode($body, true);
+
+                if (in_array($stat_name, ['visitors', 'pageviews']) && isset($data['data']) && is_array($data['data'])) {
+                    $total = 0;
+                    foreach ($data['data'] as $day) {
+                        $total += $day['count'];
+                    }
+                    $value = $total;
+                } elseif (isset($data['value'])) { // For bounce_rate, visit_duration etc. if they return a single value
+                    $value = esc_html($data['value']);
+                    if ($stat_name === 'bounce_rate') $value .= '%';
+                    if ($stat_name === 'visit_duration') $value .= 's';
+                }
+            }
+            $results[$label] = $value;
         }
-
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        $data = json_decode($response_body, true);
-
-        if ($response_code !== 200 || !$data) {
-            echo '<p>Nepavyko gauti arba apdoroti statistikos duomenų. Patikrinkite savo API raktą arba bandykite vėliau.</p>';
-            // For debugging:
-            // echo '<pre>'; print_r($response_body); echo '</pre>';
-            return;
-        }
-
-        // Darant prielaidą, kad API grąžina tokius duomenis. Tai gali reikėti pakeisti.
-        $stats = $data['results'];
         ?>
         <ul>
-            <li><strong>Lankytojai (Visitors):</strong> <?php echo isset($stats['visitors']) ? esc_html($stats['visitors']['value']) : 'N/A'; ?></li>
-            <li><strong>Puslapių peržiūros (Pageviews):</strong> <?php echo isset($stats['pageviews']) ? esc_html($stats['pageviews']['value']) : 'N/A'; ?></li>
-            <li><strong>Grįžimo rodiklis (Bounce Rate):</strong> <?php echo isset($stats['bounce_rate']) ? esc_html($stats['bounce_rate']['value']) . '%' : 'N/A'; ?></li>
-            <li><strong>Apsilankymo trukmė (Visit Duration):</strong> <?php echo isset($stats['visit_duration']) ? esc_html($stats['visit_duration']['value']) . 's' : 'N/A'; ?></li>
+            <?php foreach ($results as $label => $value) : ?>
+                <li><strong><?php echo $label; ?>:</strong> <?php echo $value; ?></li>
+            <?php endforeach; ?>
         </ul>
         <?php
     }
