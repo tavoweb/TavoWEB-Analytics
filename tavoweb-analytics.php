@@ -189,11 +189,38 @@ class TavoWeb_Analytics_Plugin {
             $results[$label] = $value;
         }
         ?>
-        <ul>
+        <style>
+            .tavoweb-stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+            }
+            .tavoweb-stat-item {
+                background: #f9f9f9;
+                border-left: 4px solid #0073aa;
+                padding: 15px;
+                border-radius: 4px;
+            }
+            .tavoweb-stat-item strong {
+                display: block;
+                font-size: 1.5em;
+                color: #23282d;
+            }
+            .tavoweb-stat-item span {
+                font-size: 0.9em;
+                color: #555;
+            }
+        </style>
+        <div class="tavoweb-stats-grid">
             <?php foreach ($results as $label => $value) : ?>
-                <li><strong><?php echo $label; ?>:</strong> <?php echo $value; ?></li>
+                <?php if ($value !== 'N/A') : ?>
+                    <div class="tavoweb-stat-item">
+                        <strong><?php echo $value; ?></strong>
+                        <span><?php echo $label; ?></span>
+                    </div>
+                <?php endif; ?>
             <?php endforeach; ?>
-        </ul>
+        </div>
         <?php
     }
 }
