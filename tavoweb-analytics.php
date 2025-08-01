@@ -33,7 +33,7 @@ class TavoWeb_Analytics_Plugin {
     public function add_analytics_script() {
         $site_id = get_option('tavoweb_analytics_site_id');
         if (!empty($site_id)) {
-            echo '<script data-host="https://analytics.tavoweb.eu" data-dnt="false" src="https://analytics.tavoweb.eu/js/script.js" id="' . esc_attr($site_id) . '" async defer></script>';
+            echo '<script data-host="https://analytics.tavoweb.eu" data-dnt="false" src="https://analytics.tavoweb.eu/js/script.js" id="ZwSg9rf6GA" async defer></script>';
         }
     }
 
